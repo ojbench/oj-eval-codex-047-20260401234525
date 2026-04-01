@@ -54,11 +54,14 @@ inline Vec Controller::get_v_next() {
     const double eps = 1e-9;
     const double tau = TIME_INTERVAL;
     const double margin = 1e-3;
+    const double arrive_thr = std::max(1e-3, 0.5 * std::max(0.0, r));
 
     Vec to_tar = pos_tar - pos_cur;
     double dist = len(to_tar);
     Vec v_des = v_cur * 0.0;
-    if (dist > eps) {
+    if (dist <= arrive_thr) {
+        v_des = v_des * 0.0; // stop near target
+    } else if (dist > eps) {
         double desired_speed = std::min(v_max, dist / std::max(tau, eps));
         v_des = (to_tar / dist) * desired_speed;
     }
@@ -70,7 +73,7 @@ inline Vec Controller::get_v_next() {
     Vec v = v_des;
     if (monitor) {
         int N = monitor->get_robot_number();
-        for (int pass = 0; pass < 2; ++pass) {
+        for (int pass = 0; pass < 3; ++pass) {
             for (int j = 0; j < N; ++j) {
                 if (j == id) continue;
                 Vec pj = monitor->get_pos_cur(j);
@@ -103,6 +106,11 @@ inline Vec Controller::get_v_next() {
                     double target = std::max(0.0, 0.1 * v_max);
                     double delta = target - appr;
                     v = v + u * delta;
+                    // add tangential sidestep to break symmetry
+                    Vec u_perp(-u.y, u.x);
+                    double sidestep = std::min(0.3 * v_max, (Rsum - dmin) / std::max(tau, eps));
+                    double sign = (id < j) ? 1.0 : -1.0;
+                    v = v + u_perp * (sign * sidestep);
                     v = clamp_len(v, v_max);
                 }
 
@@ -120,4 +128,3 @@ inline Vec Controller::get_v_next() {
 }
 
 #endif // SRC_HPP
-
